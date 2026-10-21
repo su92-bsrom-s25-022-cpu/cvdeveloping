@@ -127,15 +127,28 @@
     <!-- ACTION BUTTONS & CONTROLS -->
     <div class="flex items-center space-x-2 md:space-x-3">
       <!-- Quick Load Sample Data -->
-      <button onclick="loadSampleData()" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 font-medium transition flex items-center space-x-1.5 border border-slate-700">
+      <button onclick="loadSampleData()" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 font-medium transition flex items-center space-x-1 border border-slate-700">
         <i class="fa-solid fa-wand-magic-sparkles text-amber-400"></i>
-        <span class="hidden sm:inline">Fill Demo Data</span>
+        <span class="hidden sm:inline">Fill Demo</span>
       </button>
 
+      <!-- Save / Export Progress JSON -->
+      <button onclick="exportJSON()" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-emerald-400 font-medium transition flex items-center space-x-1 border border-slate-700" title="Download CV data file to edit later">
+        <i class="fa-solid fa-download"></i>
+        <span class="hidden sm:inline">Export Progress</span>
+      </button>
+
+      <!-- Upload & Edit Existing JSON -->
+      <label for="json-upload-input" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-indigo-400 font-medium transition flex items-center space-x-1 border border-slate-700 cursor-pointer" title="Upload previously exported JSON file">
+        <i class="fa-solid fa-upload"></i>
+        <span class="hidden sm:inline">Edit Existing CV</span>
+      </label>
+      <input type="file" id="json-upload-input" accept=".json" onchange="importJSON(event)" class="hidden">
+
       <!-- Clear Form -->
-      <button onclick="resetForm()" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-red-400 font-medium transition flex items-center space-x-1.5 border border-slate-700">
+      <button onclick="resetForm()" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-red-400 font-medium transition flex items-center space-x-1 border border-slate-700">
         <i class="fa-solid fa-trash-can"></i>
-        <span class="hidden sm:inline">Clear All</span>
+        <span class="hidden sm:inline">Clear</span>
       </button>
 
       <!-- Print Fallback Button -->
@@ -145,12 +158,24 @@
       </button>
 
       <!-- Direct PDF Download -->
-      <button onclick="downloadPDF()" id="download-btn" class="px-4 py-1.5 rounded-lg bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-semibold text-sm shadow-md shadow-cyan-500/20 transition flex items-center space-x-2">
+      <button onclick="downloadPDF()" id="download-btn" class="px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-semibold text-xs shadow-md shadow-cyan-500/20 transition flex items-center space-x-1.5">
         <i class="fa-solid fa-file-pdf"></i>
         <span>Download PDF</span>
       </button>
     </div>
   </header>
+
+  <!-- DRAFT RESTORE NOTIFICATION BANNER -->
+  <div id="draft-alert-banner" class="hidden bg-indigo-900/90 border-b border-indigo-700 px-4 py-2 text-xs text-indigo-200 flex items-center justify-between no-print z-30">
+    <div class="flex items-center space-x-2">
+      <i class="fa-solid fa-floppy-disk text-indigo-400 text-sm"></i>
+      <span>We found an autosaved draft from your previous session!</span>
+    </div>
+    <div class="flex items-center space-x-2">
+      <button onclick="restoreLocalDraft()" class="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded text-[11px] transition">Restore Saved CV</button>
+      <button onclick="dismissDraftBanner()" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[11px] transition">Dismiss</button>
+    </div>
+  </div>
 
   <!-- MAIN APP CONTENT (TWO-COLUMN WORKSPACE) -->
   <div class="flex-1 flex overflow-hidden relative">
@@ -565,11 +590,114 @@
 
     // Initialize Application
     window.onload = function() {
+      checkLocalDraft();
       populateFormFields();
       renderDynamicListInputs();
       updateCV();
       adjustZoom(0);
     };
+
+    // Check LocalStorage for Saved Progress
+    function checkLocalDraft() {
+      const saved = localStorage.getItem('procv_autosave_draft');
+      if (saved) {
+        document.getElementById('draft-alert-banner').classList.remove('hidden');
+      }
+    }
+
+    function restoreLocalDraft() {
+      try {
+        const saved = localStorage.getItem('procv_autosave_draft');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed.cvData) cvData = parsed.cvData;
+          if (parsed.currentTemplate) currentTemplate = parsed.currentTemplate;
+          if (parsed.themePrimaryColor) themePrimaryColor = parsed.themePrimaryColor;
+          if (parsed.currentFontFamily) currentFontFamily = parsed.currentFontFamily;
+
+          populateFormFields();
+          renderDynamicListInputs();
+          updateCV();
+        }
+      } catch(e) {
+        console.error("Failed to restore draft", e);
+      }
+      dismissDraftBanner();
+    }
+
+    function dismissDraftBanner() {
+      document.getElementById('draft-alert-banner').classList.add('hidden');
+    }
+
+    // Auto-save to LocalStorage
+    function autoSaveDraft() {
+      const payload = {
+        cvData,
+        currentTemplate,
+        themePrimaryColor,
+        currentFontFamily,
+        savedAt: new Date().toISOString()
+      };
+      localStorage.setItem('procv_autosave_draft', JSON.stringify(payload));
+    }
+
+    // Export CV Progress as .JSON File
+    function exportJSON() {
+      readFormInputs();
+      const payload = {
+        cvData,
+        currentTemplate,
+        themePrimaryColor,
+        currentFontFamily,
+        exportVersion: "1.0"
+      };
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(payload, null, 2));
+      const downloadAnchor = document.createElement('a');
+      const filename = (cvData.fullName ? cvData.fullName.trim().replace(/\s+/g, '_') : 'CV_Draft') + '_Data.json';
+      
+      downloadAnchor.setAttribute("href", dataStr);
+      downloadAnchor.setAttribute("download", filename);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+    }
+
+    // Import Previously Saved JSON CV File
+    function importJSON(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const imported = JSON.parse(e.target.result);
+          if (imported.cvData) {
+            cvData = imported.cvData;
+            if (imported.currentTemplate) currentTemplate = imported.currentTemplate;
+            if (imported.themePrimaryColor) themePrimaryColor = imported.themePrimaryColor;
+            if (imported.currentFontFamily) currentFontFamily = imported.currentFontFamily;
+
+            populateFormFields();
+            renderDynamicListInputs();
+            updateCV();
+            autoSaveDraft();
+
+            // Select active template visually
+            document.querySelectorAll('.tmpl-card').forEach(card => {
+              card.classList.remove('border-cyan-500');
+              card.classList.add('border-slate-700');
+            });
+          } else {
+            alert('Invalid CV JSON file format.');
+          }
+        } catch (err) {
+          console.error("JSON Import Error:", err);
+          alert('Could not parse JSON file. Please make sure it is a valid exported CV draft.');
+        }
+      };
+      reader.readAsText(file);
+      event.target.value = ''; // Reset input element
+    }
 
     // Switch Editor Sidebar Tabs
     function switchTab(tab) {
@@ -820,9 +948,49 @@
         showPhoto: true, photoUrl: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
         summary: "", experiences: [], education: [], skills: [], languages: [], hobbies: ""
       };
+      localStorage.removeItem('procv_autosave_draft');
       populateFormFields();
       renderDynamicListInputs();
       updateCV();
+    }
+
+    // Load Sample Data
+    function loadSampleData() {
+      cvData = {
+        fullName: "LARRY TIBBETTS",
+        jobTitle: "Senior Software Engineer",
+        email: "larry.tibbetts@mail.com",
+        phone: "+44 (0)20 7666 8555",
+        location: "London, England",
+        website: "linkedin.com/in/larry.tibbetts",
+        showPhoto: true,
+        photoUrl: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
+        summary: "Experienced technology strategist specializing in scalable backend design and frontend performance optimization.",
+        experiences: [
+          { title: "Senior Software Engineer", company: "Tech Solutions Ltd", date: "Jan 2020 - Current", desc: "Key responsibility or achievement: Developed and maintained high-scale cloud backend microservices." },
+          { title: "Frontend Developer", company: "Digital Creative Studio", date: "2017 - 2020", desc: "Key responsibility or achievement: Built responsive web templates and state management solutions." }
+        ],
+        education: [
+          { degree: "Bachelor of Science: Computer Systems", institution: "Columbia University, NY", date: "2014" },
+          { degree: "Master in Software Engineering", institution: "Oxford University", date: "2016" }
+        ],
+        skills: [
+          { name: "Project Management", level: 90 },
+          { name: "Strong Decision Maker", level: 85 },
+          { name: "Complex Problem Solver", level: 95 },
+          { name: "Creative Design", level: 80 }
+        ],
+        languages: [
+          { name: "Spanish", level: "C2 Native" },
+          { name: "Chinese", level: "A1 Basic" },
+          { name: "German", level: "A2 Elementary" }
+        ],
+        hobbies: "Writing, Sketching, Photography, Open Source Contributing"
+      };
+      populateFormFields();
+      renderDynamicListInputs();
+      updateCV();
+      autoSaveDraft();
     }
 
     // Load Sample Data
@@ -906,9 +1074,9 @@
 
     // =========================================================================
     // MAIN CV RENDER ENGINE
-    // =========================================================================
     function updateCV() {
       readFormInputs();
+      autoSaveDraft();
       const container = document.getElementById('cv-preview-container');
       container.style.fontFamily = currentFontFamily;
 
